@@ -1,0 +1,25 @@
+{{- if eq .Values.pgwatch.postgres.enable_pg_sink "true" }}
+{{- range $path, $_ := .Files.Glob "dashboards/postgresql/*.json" }}
+{{- $filename := base $path }}
+{{- $name := $filename | lower | replace "." "-" | replace "_" "-" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-postgresql-dashboard-{{ $name }}
+  {{- if $.Values.pgwatch.grafana.useSubchart }}
+  annotations:
+    # Used by the k8s-sidecar (pgwatch.grafana.useSubchart: true) to place
+    # dashboards under /tmp/dashboards/postgresql/, matching default_home_dashboard_path.
+    # Harmless when useSubchart: false — no sidecar is running in that mode.
+    grafana_dashboard_folder: "postgresql"
+  {{- end }}
+  labels:
+    application: pgwatch
+    vendor: opensource.cybertec
+    grafana_dashboard: "1"
+data:
+  {{ $filename }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

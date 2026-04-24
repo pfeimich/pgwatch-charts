@@ -7,6 +7,7 @@ metadata:
     vendor: opensource.cybertec
     postgres-operator.cybertec.at/stack: pgwatch
   name: pgwatch-prometheus
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     matchLabels:
@@ -14,11 +15,26 @@ spec:
       name: pgwatch-prometheus
   template:
     metadata:
-      creationTimestamp: null
       labels:
         postgres-operator.cybertec.at/stack: pgwatch
         name: pgwatch-prometheus
     spec:
+      {{- include "pgwatch.podSecurityContext" (dict "global" .Values.securityContext "component" .Values.pgwatch.prometheus.securityContext) | nindent 6 }}
+      initContainers:
+      - name: init-permissions
+        image: busybox
+        command:
+        - /bin/sh
+        - -c
+        - chown -R 65534:65534 /prometheus
+        # Init container must run as root to perform chown; this overrides any pod/global
+        # security context so the filesystem can be prepared for the prometheus user.
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+        volumeMounts:
+        - mountPath: /prometheus
+          name: prometheus-volume
       containers:
       - image: {{ .Values.pgwatch.prometheus.new_prometheus.image }}
         imagePullPolicy: IfNotPresent
@@ -33,6 +49,17 @@ spec:
           successThreshold: 1
           timeoutSeconds: 1
         name: pgwatch-prometheus
+        {{- with .Values.pgwatch.prometheus.env }}
+        env:
+        {{- range $key, $value := . }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.pgwatch.prometheus.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         ports:
         - containerPort: 9090
           protocol: TCP
@@ -51,12 +78,14 @@ spec:
           - "--config.file=/etc/prometheus/prometheus.yml"
           - "--storage.tsdb.path=/prometheus"
           - "--storage.tsdb.retention.time={{ .Values.pgwatch.prometheus.new_prometheus.settings.retention_days }}d"
+        {{- include "pgwatch.containerSecurityContext" (dict "global" .Values.securityContext "component" .Values.pgwatch.prometheus.securityContext) | nindent 8 }}
         volumeMounts:
         - mountPath: /etc/prometheus
           name: prometheus-cm
         - mountPath: /prometheus
           name: prometheus-volume
-      securityContext: {}
+        - mountPath: /etc/prometheus/alert-rules.d
+          name: prometheus-alerts
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
@@ -69,6 +98,10 @@ spec:
       - name: prometheus-volume
         persistentVolumeClaim:
           claimName: prometheus-pvc
+      - configMap:
+          defaultMode: 420
+          name: pgwatch-prometheus-alerts
+        name: prometheus-alerts
   progressDeadlineSeconds: 600
   replicas: 1
   revisionHistoryLimit: 10

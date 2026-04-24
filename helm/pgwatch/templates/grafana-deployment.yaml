@@ -1,4 +1,8 @@
-{{- if eq .Values.pgwatch.grafana.enable_grafana "true" }}
+{{/*
+  Skipped when pgwatch.grafana.useSubchart: true — the official Grafana subchart
+  provides the Grafana instance in that case (see grafana: top-level values block).
+*/}}
+{{- if and (eq .Values.pgwatch.grafana.enable_grafana "true") (not .Values.pgwatch.grafana.useSubchart) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +25,7 @@ spec:
         application: pgwatch
         pgwatch.pods.role: grafana
     spec:
+      {{- include "pgwatch.podSecurityContext" (dict "global" .Values.securityContext "component" .Values.pgwatch.grafana.securityContext) | nindent 6 }}
       containers:
         - env:
             - name: GF_AUTH_ANONYMOUS_ENABLED
@@ -28,14 +33,14 @@ spec:
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
               value: Admin
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
-              value: /var/lib/grafana/dashboards/1-global-db-overview.json
+              value: /var/lib/grafana/dashboards/postgresql/1-global-db-overview.json
           #  - name: GF_INSTALL_PLUGINS
           #    value: marcusolsson-treemap-panel
-            {{- if eq .Values.pgwatch.postgres.create_metric_database "true" }} 
+            {{- if eq .Values.pgwatch.postgres.create_metric_database "true" }}
             - name: GF_DATABASE_TYPE
               value: postgres
             - name: GF_DATABASE_HOST
-              value: postgres-svc:5432
+              value: "{{ include "pgwatch.dbHost" . }}:5432"
             - name: GF_DATABASE_NAME
               value: pgwatch_grafana
             - name: GF_DATABASE_SSL_MODE
@@ -50,21 +55,42 @@ spec:
                 secretKeyRef:
                   name: pgwatch-postgresql-secret-pgwatch
                   key: password
-            {{- else }}
+            # Separate credentials for the pgwatch-metrics datasource.
+            - name: PGWATCH_METRICS_DS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pgwatch-postgresql-secret-pgwatch
+                  key: username
+            - name: PGWATCH_METRICS_DS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pgwatch-postgresql-secret-pgwatch
+                  key: password
+            {{- else if .Values.pgwatch.postgres.use_existing_database }}
             - name: GF_DATABASE_TYPE
               value: postgres
             - name: GF_DATABASE_HOST
               value: {{ .Values.pgwatch.postgres.use_existing_database.endpoint }}
+              # TODO: Port?
+              # value: "{{ .Values.pgwatch.postgres.use_existing_database.endpoint }}:{{ .Values.pgwatch.postgres.use_existing_database.port }}"
             - name: GF_DATABASE_NAME
-              value: {{ .Values.pgwatch.postgres.use_existing_database.database }}
+              value: {{ .Values.pgwatch.postgres.use_existing_database.grafana_database | default "pgwatch_grafana" }}
             - name: GF_DATABASE_SSL_MODE
               value: {{ .Values.pgwatch.postgres.use_existing_database.sslmode }}
             - name: GF_DATABASE_USER
               value: {{ .Values.pgwatch.postgres.use_existing_database.username }}
             - name: GF_DATABASE_PASSWORD
               value: {{ .Values.pgwatch.postgres.use_existing_database.password }}
-            {{ end }}
-          image: grafana/grafana:10.4.7
+            {{- end }}
+            {{- range $key, $value := .Values.pgwatch.grafana.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- with .Values.pgwatch.grafana.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.pgwatch.grafana.image }}
           name: grafana
           ports:
             - containerPort: 3000
@@ -73,11 +99,12 @@ spec:
             - mountPath: /etc/grafana/provisioning/datasources/pg_ds.yml
               name: grafana-datasources
               subPath: pg_ds.yml
-            - mountPath: /etc/grafana/provisioning/dashboards/pg_db.yml
-              name: grafana-config
-              subPath: pg_db.yml
+            - mountPath: /etc/grafana/provisioning/dashboards/dashboards_provider.yml
+              name: grafana-dashboard-config
+              subPath: dashboards_provider.yml
             - mountPath: /var/lib/grafana/dashboards
               name: grafana-dashboards
+          {{- include "pgwatch.containerSecurityContext" (dict "global" .Values.securityContext "component" .Values.pgwatch.grafana.securityContext) | nindent 10 }}
       restartPolicy: Always
       volumes:
         - configMap:
@@ -86,88 +113,120 @@ spec:
                 path: pg_ds.yml
             name: grafana-datasources
           name: grafana-datasources
-        - configMap:
-            items:
-              - key: postgres_dashboard.yml
-                path: pg_db.yml
-            name: grafana-config
-          name: grafana-config
+        - name: grafana-dashboard-config
+          configMap:
+            name: grafana-dashboard-config
         - name: grafana-dashboards
           projected:
+            defaultMode: 416
             sources:
+              {{- if eq .Values.pgwatch.postgres.enable_pg_sink "true" }}
+              {{- range $path, $_ := .Files.Glob "dashboards/postgresql/*.json" }}
               - configMap:
-                  name: grafana-dashboards-basics
-                  optional: true
+                  name: "grafana-postgresql-dashboard-{{ base $path | lower | replace "." "-" | replace "_" "-" }}"
+                  items:
+                    - key: {{ base $path }}
+                      path: "postgresql/{{ base $path }}"
+              {{- end }}
+              {{- end }}
+
+              {{- if eq .Values.pgwatch.prometheus.enable_prom_sink "true" }}
+              {{- range $path, $_ := .Files.Glob "dashboards/prometheus/*.json" }}
               - configMap:
-                  name: grafana-dashboards-others
-                  optional: true
-            defaultMode: 416       
+                  name: "grafana-prometheus-dashboard-{{ base $path | lower | replace "." "-" | replace "_" "-" }}"
+                  items:
+                    - key: {{ base $path }}
+                      path: "prometheus/{{ base $path }}"
+              {{- end }}
+              {{- end }}
+{{ end }}
 ---
+{{/*
+  grafana-datasources ConfigMap — rendered for BOTH Grafana deployment modes.
+
+  Custom Deployment (useSubchart: false):
+    Mounted as a volume inside the Grafana pod at
+    /etc/grafana/provisioning/datasources/pg_ds.yml  (via subPath).
+
+  Grafana Subchart (useSubchart: true):
+    The grafana_datasource: "1" label is watched by the k8s-sidecar container,
+    which automatically injects the content into Grafana's datasources
+    provisioning directory — no pod restart required.
+
+*/}}
+{{- if eq .Values.pgwatch.grafana.enable_grafana "true" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   annotations:
-    use-subpath: "true"
+    # Custom Deployment (useSubchart: false): mounted via subPath into
+    #   /etc/grafana/provisioning/datasources/pg_ds.yml
+    #   Check volumeMounts for the deployment.
+    #
+    # Grafana subchart (useSubchart: true): picked up by the k8s-sidecar
+    #   via the grafana_datasource: "1" label below.
   labels:
     application: pgwatch
+    {{- if .Values.pgwatch.grafana.useSubchart }}
+    # Watched by the Grafana subchart sidecar (sidecar.datasources.label: grafana_datasource).
+    grafana_datasource: "1"
+    {{- end }}
   name: grafana-datasources
   namespace: {{ .Release.Namespace }}
 data:
-  {{- if eq .Values.pgwatch.postgres.create_metric_database "true" }} 
   postgres_datasource.yml: |
     apiVersion: 1
     datasources:
-    - name: pg-metrics
+  {{- if eq .Values.pgwatch.grafana.enable_datasources.postgres "true" }}
+  {{- if eq .Values.pgwatch.postgres.create_metric_database "true" }}
+    - name: pgwatch-metrics
       type: postgres
-      url: postgres-svc:5432
+      url: "{{ include "pgwatch.dbHost" . }}:5432"
       access: proxy
-      password: pgwatchadmin
-      user: pgwatch
-      database: pgwatch_metrics
-      basicAuth: true
+      user: "${PGWATCH_METRICS_DS_USER}"
       isDefault: true
       jsonData:
+        database: pgwatch_metrics
         sslmode: disable
-      postgresVersion: 1700
+        # TODO: Automate setting of postgresVersion
+        postgresVersion: 1800
+      secureJsonData:
+        password: "${PGWATCH_METRICS_DS_PASSWORD}"
       version: 1
       editable: true
-  {{- else }}
-  postgres_datasource.yml: |
-    apiVersion: 1
-    datasources:
-    - name: pg-metrics
+  {{- else if .Values.pgwatch.postgres.use_existing_database }}
+    - name: pgwatch-metrics
       type: postgres
       url: {{ .Values.pgwatch.postgres.use_existing_database.endpoint }}:{{ .Values.pgwatch.postgres.use_existing_database.port }}
       access: proxy
-      password: {{ .Values.pgwatch.postgres.use_existing_database.password }}
       user: {{ .Values.pgwatch.postgres.use_existing_database.username }}
-      database: {{ .Values.pgwatch.postgres.use_existing_database.database }}
-      basicAuth: true
       isDefault: true
       jsonData:
+        database: {{ .Values.pgwatch.postgres.use_existing_database.database }}
         sslmode: {{ .Values.pgwatch.postgres.use_existing_database.sslmode | default "disable" }}
+      secureJsonData:
+        password: {{ .Values.pgwatch.postgres.use_existing_database.password }}
       version: 1
       editable: true
   {{ end }}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  labels:
-    application: pgwatch
-  name: grafana-config
-  namespace: {{ .Release.Namespace }}
-data:
-  postgres_dashboard.yml: |
-    apiVersion: 1
-
-    providers:
-    - name: 'default'
+  {{ end }}
+  {{- if eq .Values.pgwatch.grafana.enable_datasources.prometheus "true" }}
+    - name: PROMETHEUS
+      type: prometheus
+      access: proxy
       orgId: 1
-      folder: ''
-      type: file
-      disableDeletion: false
-      updateIntervalSeconds: 10 #how often Grafana will scan for changed dashboards
-      options:
-        path: /var/lib/grafana/dashboards
-{{ end }}
+      url: http://pgwatch-prometheus-svc:9090
+      password:
+      user:
+      database:
+      basicAuth:
+      basicAuthUser:
+      basicAuthPassword:
+      withCredentials:
+      {{- if ne .Values.pgwatch.grafana.enable_datasources.postgres "true" }}
+      isDefault: true
+      {{- end}}
+      version: 1
+      editable: false
+  {{ end }}
+{{- end }}

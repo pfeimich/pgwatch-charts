@@ -1,0 +1,18 @@
+{{/*
+  pgwatch-sources-config.yaml
+  Creates a ConfigMap containing the user-supplied source YAML file.
+  Only rendered when pgwatch.sources.file is non-empty.
+*/}}
+{{- if .Values.pgwatch.sources.file }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    application: pgwatch
+    vendor: opensource.cybertec
+  name: pgwatch-sources-cm
+  namespace: {{ .Release.Namespace }}
+data:
+  sources.yaml: |
+{{ .Values.pgwatch.sources.file | indent 4 }}
+{{- end }}
