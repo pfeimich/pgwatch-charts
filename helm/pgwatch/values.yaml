@@ -39,7 +39,7 @@ pgwatch:
 
   # == Core Settings ==
 
-  image: "docker.io/cybertecpostgresql/pgwatch:latest"
+  image: "docker.io/cybertecpostgresql/pgwatch:5.1.0"
   # -- Web UI listen port. Must match PW_WEBADDR (default :8080). Used for containerPort and Service.
   webPort: 8080
 
@@ -101,9 +101,9 @@ pgwatch:
   # -- Additional environment variables for the pgwatch container.
   # Each entry is injected as a plain key/value env var.
   # Example:
-  #   env:
-  #     PW_LOGLEVEL: "debug"
-  #     PW_WEBBASEPATH: "/pgwatch"
+      env:
+        PW_LOGLEVEL: "debug"
+        PW_WEBBASEPATH: "/pgwatch"
   env: {}
   # -- Inject env vars from existing ConfigMaps or Secrets.
   # Example:
@@ -129,8 +129,8 @@ pgwatch:
     new_pg_database:
       image: "docker.io/postgres:18.3-alpine3.23"
       volume:
-        size: '10Gi'
-        storageClass: 'standard'
+        size: '2Gi'
+        storageClass: 'thin'
 
     # -- Existing PostgreSQL instance — active when create_metric_database: false.
     # use_existing_database:
@@ -170,8 +170,8 @@ pgwatch:
       settings:
         retention_days: 31
       volume:
-        size: '10Gi'
-        storageClass: 'standard'
+        size: '2Gi'
+        storageClass: 'thin'
 
     # -- Existing Prometheus instance — active when create_prometheus: false.
     #
