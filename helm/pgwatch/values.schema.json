@@ -1,0 +1,774 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "pgwatch",
+  "description": "Helm Chart values for pgwatch",
+  "type": "object",
+  "properties": {
+
+    "securityContext": {
+      "title": "Global Security Context",
+      "description": "When enabled, global values are the baseline and component-specific values are merged on top (component wins).",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Global Security Context",
+          "description": "Set to true to apply global security context defaults to all components.",
+          "type": "boolean",
+          "default": false
+        },
+        "pod": {
+          "title": "Pod-level Security Context",
+          "description": "https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#PodSecurityContext",
+          "type": "object",
+          "properties": {
+            "runAsNonRoot": {
+              "title": "Run as Non-Root",
+              "type": "boolean",
+              "default": true
+            },
+            "runAsUser": {
+              "title": "Run as User (UID)",
+              "type": "integer",
+              "default": 1000,
+              "minimum": 0
+            },
+            "runAsGroup": {
+              "title": "Run as Group (GID)",
+              "type": "integer",
+              "default": 1000,
+              "minimum": 0
+            },
+            "fsGroup": {
+              "title": "Filesystem Group",
+              "type": "integer",
+              "default": 1000,
+              "minimum": 0
+            },
+            "fsGroupChangePolicy": {
+              "title": "Filesystem Group Change Policy",
+              "type": "string",
+              "default": "OnRootMismatch",
+              "enum": ["OnRootMismatch", "Always"]
+            }
+          }
+        },
+        "container": {
+          "title": "Container-level Security Context",
+          "description": "https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#SecurityContext",
+          "type": "object",
+          "properties": {
+            "allowPrivilegeEscalation": {
+              "title": "Allow Privilege Escalation",
+              "type": "boolean",
+              "default": false
+            },
+            "readOnlyRootFilesystem": {
+              "title": "Read-only Root Filesystem",
+              "type": "boolean",
+              "default": false
+            },
+            "capabilities": {
+              "title": "Linux Capabilities",
+              "type": "object",
+              "properties": {
+                "drop": {
+                  "title": "Drop Capabilities",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": ["ALL"]
+                },
+                "add": {
+                  "title": "Add Capabilities",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "extraDeploy": {
+      "title": "Extra Kubernetes Resources",
+      "description": "Extra arbitrary Kubernetes resources to deploy alongside the chart. Each item is rendered via tpl.",
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "default": []
+    },
+
+    "pgwatch": {
+      "title": "pgwatch",
+      "description": "Core pgwatch configuration.",
+      "type": "object",
+      "properties": {
+
+        "image": {
+          "title": "pgwatch Image",
+          "description": "Container image for pgwatch.",
+          "type": "string",
+          "default": "docker.io/cybertecpostgresql/pgwatch:5.1.0"
+        },
+
+        "webPort": {
+          "title": "Web UI Port",
+          "description": "Web UI listen port. Must match PW_WEBADDR (default :8080). Used for containerPort and Service.",
+          "type": "integer",
+          "default": 8080,
+          "minimum": 1,
+          "maximum": 65535
+        },
+
+        "sources": {
+          "title": "Monitored Sources",
+          "description": "Databases pgwatch should monitor (PW_SOURCES). If file is unset, pgwatch auto-generates a URI from the metrics database settings.",
+          "type": "object",
+          "properties": {
+            "file": {
+              "title": "Sources File Content",
+              "description": "A single YAML source file to create inside the pod. The value is the raw YAML content. Use --set-file pgwatch.sources.file=./my-sources.yaml to load from disk.",
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+
+        "ingress": {
+          "title": "Ingress",
+          "description": "Ingress resource for the pgwatch web UI.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "title": "Enable Ingress",
+              "type": "boolean",
+              "default": false
+            },
+            "className": {
+              "title": "Ingress Class",
+              "description": "Ingress class (e.g. nginx, traefik). Omitted if empty.",
+              "type": "string",
+              "default": ""
+            },
+            "annotations": {
+              "title": "Annotations",
+              "description": "Annotations passed to the Ingress metadata (e.g. cert-manager.io/cluster-issuer).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {}
+            },
+            "hosts": {
+              "title": "Host Rules",
+              "description": "Host rules with paths.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "title": "Hostname",
+                    "type": "string"
+                  },
+                  "paths": {
+                    "title": "Paths",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "title": "Path",
+                          "type": "string"
+                        },
+                        "pathType": {
+                          "title": "Path Type",
+                          "type": "string",
+                          "enum": ["Prefix", "Exact", "ImplementationSpecific"],
+                          "default": "Prefix"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "default": []
+            },
+            "tls": {
+              "title": "TLS",
+              "description": "TLS secret references. Secrets must already exist in the namespace.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "secretName": {
+                    "title": "Secret Name",
+                    "type": "string"
+                  },
+                  "hosts": {
+                    "title": "Hosts",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "default": []
+            },
+            "webBasePath": {
+              "title": "Web Base Path",
+              "description": "Sub-path for reverse-proxy setups (e.g. /pgwatch). Injected as PW_WEBBASEPATH.",
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+
+        "securityContext": {
+          "title": "pgwatch Security Context",
+          "description": "Component-specific security context overrides for the pgwatch Deployment.",
+          "type": "object",
+          "properties": {
+            "pod": {
+              "title": "Pod Security Context",
+              "type": "object",
+              "additionalProperties": true
+            },
+            "container": {
+              "title": "Container Security Context",
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+
+        "env": {
+          "title": "Environment Variables",
+          "description": "Additional environment variables for the pgwatch container (e.g. PW_LOGLEVEL, PW_WEBBASEPATH).",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+
+        "envFrom": {
+          "title": "Environment From",
+          "description": "Inject env vars from existing ConfigMaps or Secrets.",
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "default": []
+        },
+
+        "postgres": {
+          "title": "PostgreSQL Metrics Sink",
+          "description": "Configuration for the PostgreSQL metrics sink.",
+          "type": "object",
+          "properties": {
+
+            "enable_pg_sink": {
+              "title": "Enable PostgreSQL Sink",
+              "description": "Set to true to enable writing metrics to PostgreSQL.",
+              "type": "boolean",
+              "default": true
+            },
+
+            "settings": {
+              "title": "PostgreSQL Sink Settings",
+              "type": "object",
+              "properties": {
+                "retention_days": {
+                  "title": "Retention (Days)",
+                  "description": "Number of days to retain metrics data in PostgreSQL.",
+                  "type": "integer",
+                  "default": 31,
+                  "minimum": 1
+                }
+              }
+            },
+
+            "create_metric_database": {
+              "title": "Create Metric Database",
+              "description": "Set to true to deploy a new PostgreSQL StatefulSet. Set to false to connect to an existing instance.",
+              "type": "boolean",
+              "default": true
+            },
+
+            "new_pg_database": {
+              "title": "New PostgreSQL Database",
+              "description": "Configuration for the new PostgreSQL StatefulSet (active when create_metric_database is true).",
+              "type": "object",
+              "properties": {
+                "image": {
+                  "title": "PostgreSQL Image",
+                  "description": "Container image for the PostgreSQL instance.",
+                  "type": "string",
+                  "default": "docker.io/postgres:18.3-alpine3.23"
+                },
+                "volume": {
+                  "title": "Persistent Volume",
+                  "type": "object",
+                  "properties": {
+                    "size": {
+                      "title": "Volume Size",
+                      "description": "Size of the persistent volume (e.g. 2Gi, 10Gi).",
+                      "type": "string",
+                      "default": "2Gi"
+                    },
+                    "storageClass": {
+                      "title": "Storage Class",
+                      "description": "StorageClass for the PVC.",
+                      "type": "string",
+                      "default": "thin"
+                    }
+                  }
+                }
+              }
+            },
+
+            "securityContext": {
+              "title": "PostgreSQL Security Context",
+              "description": "Component-specific security context overrides for the PostgreSQL StatefulSet.",
+              "type": "object",
+              "properties": {
+                "pod": {
+                  "title": "Pod Security Context",
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "container": {
+                  "title": "Container Security Context",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+
+            "env": {
+              "title": "Environment Variables",
+              "description": "Additional environment variables for the PostgreSQL container (e.g. POSTGRES_MAX_CONNECTIONS).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {}
+            },
+
+            "envFrom": {
+              "title": "Environment From",
+              "description": "Inject env vars from existing ConfigMaps or Secrets.",
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": []
+            }
+          }
+        },
+
+        "prometheus": {
+          "title": "Prometheus Metrics Sink",
+          "description": "Configuration for the Prometheus metrics sink.",
+          "type": "object",
+          "properties": {
+
+            "enable_prom_sink": {
+              "title": "Enable Prometheus Sink",
+              "description": "Set to true to enable writing metrics to Prometheus.",
+              "type": "boolean",
+              "default": true
+            },
+
+            "new_prometheus": {
+              "title": "New Prometheus Instance",
+              "description": "Configuration for the new Prometheus Deployment (active when create_prometheus is true).",
+              "type": "object",
+              "properties": {
+                "create_prometheus": {
+                  "title": "Create Prometheus",
+                  "description": "Set to true to deploy a new Prometheus instance.",
+                  "type": "boolean",
+                  "default": true
+                },
+                "image": {
+                  "title": "Prometheus Image",
+                  "description": "Container image for Prometheus.",
+                  "type": "string",
+                  "default": "prom/prometheus:main"
+                },
+                "settings": {
+                  "title": "Prometheus Settings",
+                  "type": "object",
+                  "properties": {
+                    "retention_days": {
+                      "title": "Retention (Days)",
+                      "description": "Number of days to retain metrics data in Prometheus.",
+                      "type": "integer",
+                      "default": 31,
+                      "minimum": 1
+                    }
+                  }
+                },
+                "volume": {
+                  "title": "Persistent Volume",
+                  "type": "object",
+                  "properties": {
+                    "size": {
+                      "title": "Volume Size",
+                      "description": "Size of the persistent volume (e.g. 2Gi, 10Gi).",
+                      "type": "string",
+                      "default": "2Gi"
+                    },
+                    "storageClass": {
+                      "title": "Storage Class",
+                      "description": "StorageClass for the PVC.",
+                      "type": "string",
+                      "default": "thin"
+                    }
+                  }
+                }
+              }
+            },
+
+            "securityContext": {
+              "title": "Prometheus Security Context",
+              "description": "Component-specific security context overrides. The official Prometheus image runs as UID/GID 65534 (nobody).",
+              "type": "object",
+              "properties": {
+                "pod": {
+                  "title": "Pod Security Context",
+                  "type": "object",
+                  "properties": {
+                    "runAsUser": {
+                      "title": "Run as User (UID)",
+                      "type": "integer",
+                      "default": 65534,
+                      "minimum": 0
+                    },
+                    "runAsGroup": {
+                      "title": "Run as Group (GID)",
+                      "type": "integer",
+                      "default": 65534,
+                      "minimum": 0
+                    },
+                    "fsGroup": {
+                      "title": "Filesystem Group",
+                      "type": "integer",
+                      "default": 65534,
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "container": {
+                  "title": "Container Security Context",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+
+            "env": {
+              "title": "Environment Variables",
+              "description": "Additional environment variables for the Prometheus container (e.g. GOMAXPROCS).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {}
+            },
+
+            "envFrom": {
+              "title": "Environment From",
+              "description": "Inject env vars from existing ConfigMaps or Secrets.",
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": []
+            }
+          }
+        },
+
+        "grafana": {
+          "title": "Grafana (Built-in)",
+          "description": "Configuration for the Grafana visualization component.",
+          "type": "object",
+          "properties": {
+
+            "useSubchart": {
+              "title": "Use Grafana Subchart",
+              "description": "Set to true to use the official Grafana Helm subchart instead of the custom Grafana Deployment bundled in this chart.",
+              "type": "boolean",
+              "default": false
+            },
+
+            "image": {
+              "title": "Grafana Image",
+              "description": "Container image for Grafana. Dashboards are prepared for Grafana v12.",
+              "type": "string",
+              "default": "grafana/grafana:12.4.0-21419697389"
+            },
+
+            "enable_grafana": {
+              "title": "Enable Grafana",
+              "description": "Set to true to deploy Grafana.",
+              "type": "boolean",
+              "default": true
+            },
+
+            "enable_datasources": {
+              "title": "Enable Grafana Datasources",
+              "description": "Controls which Grafana datasources are provisioned. Independent of the sink settings.",
+              "type": "object",
+              "properties": {
+                "postgres": {
+                  "title": "Enable PostgreSQL Datasource",
+                  "type": "boolean",
+                  "default": true
+                },
+                "prometheus": {
+                  "title": "Enable Prometheus Datasource",
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            },
+
+            "securityContext": {
+              "title": "Grafana Security Context",
+              "description": "Component-specific security context overrides. The official Grafana image runs as UID/GID 472.",
+              "type": "object",
+              "properties": {
+                "pod": {
+                  "title": "Pod Security Context",
+                  "type": "object",
+                  "properties": {
+                    "runAsUser": {
+                      "title": "Run as User (UID)",
+                      "type": "integer",
+                      "default": 472,
+                      "minimum": 0
+                    },
+                    "runAsGroup": {
+                      "title": "Run as Group (GID)",
+                      "type": "integer",
+                      "default": 472,
+                      "minimum": 0
+                    },
+                    "fsGroup": {
+                      "title": "Filesystem Group",
+                      "type": "integer",
+                      "default": 472,
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "container": {
+                  "title": "Container Security Context",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+
+            "env": {
+              "title": "Environment Variables",
+              "description": "Additional environment variables for the Grafana container (e.g. GF_SERVER_ROOT_URL, GF_LOG_LEVEL).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {}
+            },
+
+            "envFrom": {
+              "title": "Environment From",
+              "description": "Inject env vars from existing ConfigMaps or Secrets.",
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": []
+            }
+          }
+        }
+      }
+    },
+
+    "timescaledb": {
+      "title": "TimescaleDB Subchart",
+      "description": "TimescaleDB subchart — opt-in. Replaces the built-in PostgreSQL StatefulSet. Ref: https://artifacthub.io/packages/helm/cloudpirates-timescaledb/timescaledb",
+      "type": "object",
+      "properties": {
+
+        "enabled": {
+          "title": "Enable TimescaleDB",
+          "description": "Set to true to enable the TimescaleDB subchart.",
+          "type": "boolean",
+          "default": false
+        },
+
+        "image": {
+          "title": "TimescaleDB Image",
+          "type": "object",
+          "properties": {
+            "tag": {
+              "title": "Image Tag",
+              "description": "TimescaleDB image tag. Override to select a different PG/TS version. See https://hub.docker.com/r/timescale/timescaledb/tags",
+              "type": "string",
+              "default": "2.26.2-pg18"
+            }
+          }
+        },
+
+        "auth": {
+          "title": "Authentication",
+          "type": "object",
+          "properties": {
+            "postgresPassword": {
+              "title": "Postgres Admin Password",
+              "description": "Password for the postgres admin user. If empty, a random password is generated and stored in the release secret.",
+              "type": "string",
+              "default": ""
+            },
+            "existingSecret": {
+              "title": "Existing Secret",
+              "description": "Name of an existing Secret that already contains the postgres password. When set, postgresPassword is ignored.",
+              "type": "string",
+              "default": ""
+            }
+          }
+        },
+
+        "persistence": {
+          "title": "Persistence",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "title": "Enable Persistence",
+              "type": "boolean",
+              "default": true
+            },
+            "size": {
+              "title": "Volume Size",
+              "description": "Storage size for the TimescaleDB data volume.",
+              "type": "string",
+              "default": "10Gi"
+            },
+            "storageClass": {
+              "title": "Storage Class",
+              "description": "StorageClass for the PVC. Uses the cluster default when empty.",
+              "type": "string",
+              "default": ""
+            }
+          }
+        }
+      }
+    },
+
+    "grafana": {
+      "title": "Grafana Subchart",
+      "description": "Grafana subchart — opt-in via pgwatch.grafana.useSubchart: true. Replaces the custom Grafana Deployment. Ref: https://github.com/grafana-community/helm-charts/tree/main/charts/grafana",
+      "type": "object",
+      "properties": {
+
+        "sidecar": {
+          "title": "Sidecar Configuration",
+          "description": "Sidecar configuration for automatic dashboard and datasource discovery via labelled ConfigMaps.",
+          "type": "object",
+          "properties": {
+            "dashboards": {
+              "title": "Dashboard Sidecar",
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "title": "Enable Dashboard Sidecar",
+                  "type": "boolean",
+                  "default": true
+                },
+                "label": {
+                  "title": "Dashboard Label Key",
+                  "description": "Label key used to identify dashboard ConfigMaps.",
+                  "type": "string",
+                  "default": "grafana_dashboard"
+                },
+                "folderAnnotation": {
+                  "title": "Folder Annotation Key",
+                  "description": "Annotation key on dashboard ConfigMaps that determines the target subdirectory on disk.",
+                  "type": "string",
+                  "default": "grafana_dashboard_folder"
+                }
+              }
+            },
+            "datasources": {
+              "title": "Datasource Sidecar",
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "title": "Enable Datasource Sidecar",
+                  "type": "boolean",
+                  "default": true
+                },
+                "label": {
+                  "title": "Datasource Label Key",
+                  "description": "Label key used to identify datasource ConfigMaps.",
+                  "type": "string",
+                  "default": "grafana_datasource"
+                }
+              }
+            }
+          }
+        },
+
+        "grafana.ini": {
+          "title": "Grafana INI Configuration",
+          "description": "Grafana configuration file settings passed to the subchart.",
+          "type": "object",
+          "properties": {
+            "auth.anonymous": {
+              "title": "Anonymous Authentication",
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "title": "Enable Anonymous Access",
+                  "type": "boolean",
+                  "default": true
+                },
+                "org_role": {
+                  "title": "Organization Role",
+                  "description": "Role assigned to anonymous users.",
+                  "type": "string",
+                  "default": "Admin",
+                  "enum": ["Viewer", "Editor", "Admin"]
+                }
+              }
+            },
+            "dashboards": {
+              "title": "Dashboards",
+              "type": "object",
+              "properties": {
+                "default_home_dashboard_path": {
+                  "title": "Default Home Dashboard Path",
+                  "description": "Path to the default home dashboard JSON file inside the container.",
+                  "type": "string",
+                  "default": "/tmp/dashboards/postgresql/1-global-db-overview.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  }
+}
