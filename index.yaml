@@ -1,0 +1,22 @@
+apiVersion: v1
+entries:
+  pgwatch:
+  - apiVersion: v1
+    appVersion: "3.2"
+    created: "2026-05-01T11:43:51.489045532+02:00"
+    description: A Helm chart for pgwatch monitoring tools
+    digest: 114f2f8ac8e1a8cceb5c5062a86e54f9b45c742bfa3b04e9701dd03bc22262b8
+    name: pgwatch
+    urls:
+    - https://pfeimich.github.io/pgwatch-charts/docs/pgwatch-3.1.0.tgz
+    version: 3.1.0
+  - apiVersion: v1
+    appVersion: "3.2"
+    created: "2026-05-01T11:43:51.477610325+02:00"
+    description: A Helm chart for pgwatch monitoring tools
+    digest: 69410525096ac64bac0f782205d92485e0d57cfc72f2e1d1684933baf3c21100
+    name: pgwatch
+    urls:
+    - https://pfeimich.github.io/pgwatch-charts/docs/pgwatch-3.0.1.tgz
+    version: 3.0.1
+generated: "2026-05-01T11:43:51.45664769+02:00"

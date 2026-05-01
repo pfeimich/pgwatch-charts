@@ -101,9 +101,9 @@ pgwatch:
   # -- Additional environment variables for the pgwatch container.
   # Each entry is injected as a plain key/value env var.
   # Example:
-      env:
-        PW_LOGLEVEL: "debug"
-        PW_WEBBASEPATH: "/pgwatch"
+  #    env:
+  #      PW_LOGLEVEL: "debug"
+  #      PW_WEBBASEPATH: "/pgwatch"
   env: {}
   # -- Inject env vars from existing ConfigMaps or Secrets.
   # Example:
